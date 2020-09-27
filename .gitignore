@@ -1,3 +1,4 @@
 **/data
 **/subset*
 *.zip
+*.ipynb_checkpoints/*
