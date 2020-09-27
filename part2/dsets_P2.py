@@ -133,7 +133,20 @@ def get_ct_augmented_candidate(augentation_dict,series_uid, center_xyz, width_ir
             if random.random() > 0.5:
                 transform_t[i,i] *= -1
             
-            
+        ## Shifting by random offset
+        if "offset" in augmentation_dict:
+            offset_float = augentation_dict["offset_float"]
+            random_float = (random.random() * 2 - 1)
+            transform_t[i,3] = offset_float * random_float
+        
+        ## Scaling (zoom in, zoom out)
+        if "scale" in augmentation_dict:
+            scale_float = augentation_dict["scale"]
+            random_float = (random.random() * 2 - 1)
+            transform_t[i,i] *= 1.0 + scale_float * random_float
+        
+        # NOTE: The values are always in [-1,1] range
+
 
 
 
