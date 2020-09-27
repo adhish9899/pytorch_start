@@ -3,6 +3,7 @@ from collections import namedtuple
 import functools
 import glob
 import numpy as np
+from utils import xyz_tuple
 
 import SimpleITK as sitk
 
@@ -57,7 +58,7 @@ def get_candidate_info_list(requires_on_disk=True):
 
 class Ct:
     def __init__(self, series_uid):
-        mhd_path = "subset*/{}.mhd".format(series_uid)[0]
+        mhd_path = glob.glob("subset*/{}.mhd".format(series_uid))[0]
 
         ct_mhd = sitk.ReadImage(mhd_path)
         ct_a = np.array(sitk.GetArrayFromImage(ct_mhd), dtype=np.float32)
@@ -65,7 +66,81 @@ class Ct:
         self.series_uid = series_uid
         self.hu_a = ct_a
 
-        
+        self.origin_xyz = xyz_tuple(*ct_mhd.GetOrigin())
+        self.vx_size_xyz = xyz_tuple(*ct_mhd.GetSpacing())
+        self.direction_a = np.array(*ct_mhd.GetDirection()).reshape(3,3)
+
+    def getRawCandidate(self, center_xyz, width_irc):
+        center_irc = xyz2irc(
+            center_xyz,
+            self.origin_xyz,
+            self.vxSize_xyz,
+            self.direction_a,
+        )
+
+        slice_list = []
+        for axis, center_val in enumerate(center_irc):
+            start_ndx = int(round(center_val - width_irc[axis]/2))
+            end_ndx = int(start_ndx + width_irc[axis])
+
+            assert center_val >= 0 and center_val < self.hu_a.shape[axis], repr([self.series_uid, center_xyz, self.origin_xyz, self.vxSize_xyz, center_irc, axis])
+
+            if start_ndx < 0:
+                # log.warning("Crop outside of CT array: {} {}, center:{} shape:{} width:{}".format(
+                #     self.series_uid, center_xyz, center_irc, self.hu_a.shape, width_irc))
+                start_ndx = 0
+                end_ndx = int(width_irc[axis])
+
+            if end_ndx > self.hu_a.shape[axis]:
+                # log.warning("Crop outside of CT array: {} {}, center:{} shape:{} width:{}".format(
+                #     self.series_uid, center_xyz, center_irc, self.hu_a.shape, width_irc))
+                end_ndx = self.hu_a.shape[axis]
+                start_ndx = int(self.hu_a.shape[axis] - width_irc[axis])
+
+            slice_list.append(slice(start_ndx, end_ndx))
+
+        ct_chunk = self.hu_a[tuple(slice_list)]
+
+        return ct_chunk, center_irc
+
+
+@functools.lru_cache(1, typed=True)
+def getCt(series_uid):
+    return Ct(series_uid)
+
+@raw_cache.memoize(typed=True)
+def getCtRawCandidate(series_uid, center_xyz, width_irc):
+    ct = getCt(series_uid)
+    ct_chunk, center_irc = ct.getRawCandidate(center_xyz, width_irc)
+    return ct_chunk, center_irc
+
+################################
+def get_ct_augmented_candidate(augentation_dict,series_uid, center_xyz, width_irc, use_cache=True):
+
+    if use_cache == True:
+        ct_chunk, center_irc = getCtRawCandidate(series_uid, center_xyz, width_irc)
+
+    else:
+        ct = getCt(series_uid)
+        ct_chunk, center_irc = ct.getRawCandidate(center_xyz, width_irc)
+    
+    ct_t = torch.tensor(ct_chunk).unsqueeze(0).unsqueeze(0).to(torch.float32)
+
+    transform_t = torch.eye(4)
+
+    for i in range(3):
+        if "flip" in augentation_dict:
+            if random.random() > 0.5:
+                transform_t[i,i] *= -1
+            
+            
+
+
+
+
+
+
+    pass
 
 
 
