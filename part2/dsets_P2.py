@@ -4,6 +4,7 @@ import functools
 import glob
 import numpy as np
 from utils import xyz_tuple
+from torch.utils.data import Dataset
 
 import SimpleITK as sitk
 
@@ -146,10 +147,37 @@ def get_ct_augmented_candidate(augentation_dict,series_uid, center_xyz, width_ir
             transform_t[i,i] *= 1.0 + scale_float * random_float
         
         # NOTE: The values are always in [-1,1] range
+    
+    if "rotate" in augmentation_dict:
+        angle_rad = random.random() * math.pi * 2
+        s = math.sin(angle_rad)
+        c = math.cos(angle_rad)
+
+        rotation_t = torch.tensor([
+            [c, -s, 0],
+            [s, c, 0],
+            [0, 0, 1]])
+        
+        transform_t @= rotation_t
+    
+    affine_t = F.affine_grid(transform_t[:3].unsqueeze(0).to(torch.float32),ct_t.size(),align_corners=False)
+
+    augmented_chunk = F.grid_sample(ct_t, affine_t, padding_mode='border', align_corners=False).to('cpu')
+
+    if 'noise' in augmentation_dict:
+        noise_t = torch.randn_like(augmented_chunk)
+        noise_t *= augmentation_dict['noise']
+
+        augmented_chunk += noise_t
+
+    return augmented_chunk[0], center_irc
 
 
+class luna_dataset(Dataset):
 
+    def __init__(self, val_stride=0, isValSet_bool=None, series_uid=None, sortby_str='random', ratio_int=0, augmentation_dict=None, candidateInfo_list=None):
 
+        
 
 
 
